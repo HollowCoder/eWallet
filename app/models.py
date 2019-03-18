@@ -39,6 +39,21 @@ class Card(db.Model):
 	cvv =db.Column(db.Integer)
 	number = db.Column(db.Integer, primary_key=True)
 
+# class UtilityBill(db.Model):
+# 	billId = db.Column()
+# 	accountNumber = db.Column(db.String(40))
+# 	accountHolder = db.Column(db.String(120))
+# 	billingAddress = db.Column(db.String(120))
+# 	usage = db.Column(db.String(20))
+# 	duePayment = db.Column(db.String(40))
+
+# class Bill(db.Model):
+# 	billId = db.Column(db.Integer, primary_key=True)
+# 	billType = db.Column(db.String(40), default="Utility")
+# 	bill = db.Column(UtilityBill)
+
+
+
 def __repr__(self):
 	return '<Card {}>'.format(self.body)
 

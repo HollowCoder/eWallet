@@ -2,24 +2,22 @@
 {% block content%}
 <br>
 <br>
-<br>
 <div class="list-group">
   <a href="#" class="list-group-item list-group-item-action active">
     <div class="d-flex w-100 justify-content-between">
-      <h5 class="mb-1">List group item heading</h5>
-      <small>3 days ago</small>
+      <h4 class="mb-1">You Cards</h4>
     </div>
-    <p class="mb-1">Donec id elit non mi porta gravida at eget metus. Maecenas sed diam eget risus varius blandit.</p>
-    <small>Donec id elit non mi porta.</small>
+    <p class="mb-1">View all your debit and credit cards here.</p>
+
   </a>
   {% for card in cards %}
   <a href="#" class="list-group-item list-group-item-action">
     <div class="d-flex w-100 justify-content-between">
-      <h5 class="mb-1">List group item heading</h5>
-      <small class="text-muted">3 days ago</small>
+      <h5 class="mb-1">{{card.number}}</h5>
+      <small class="text-muted">Added few minutes ago</small>
     </div>
-    <p class="mb-1">{{ card.number}} has the cvv code of {{ card.cvv }}</p>
-    <small class="text-muted">Donec id elit non mi porta.</small>
+    <p class="mb-1">***</p>
+    <small class="text-muted">Expires: {{card.expMonth}}/{{card.expYear}}</small>
   </a>
   {% endfor %}
 </div>

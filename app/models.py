@@ -2,7 +2,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from app import db, login
 from flask_login import UserMixin
-
+import redis
+import rq
 
 class User(UserMixin, db.Model):
 	email = db.Column(db.String(120), index=True, primary_key=True)
@@ -39,13 +40,24 @@ class Card(db.Model):
 	cvv =db.Column(db.Integer)
 	number = db.Column(db.Integer, primary_key=True)
 
-# class UtilityBill(db.Model):
-# 	billId = db.Column()
-# 	accountNumber = db.Column(db.String(40))
-# 	accountHolder = db.Column(db.String(120))
-# 	billingAddress = db.Column(db.String(120))
-# 	usage = db.Column(db.String(20))
-# 	duePayment = db.Column(db.String(40))
+class UtilityBill(db.Model):
+	billId = db.Column(db.String(36), primary_key=True)
+	accountNumber = db.Column(db.String(40))
+ 	accountHolder = db.Column(db.String(120))
+ 	billingAddress = db.Column(db.String(120))
+ 	usage = db.Column(db.String(20))
+ 	duePayment = db.Column(db.String(40))
+ 	complete = db.Column(db.Boolean, default=False)
+
+ 	def get_rq_job(self):
+ 		try:
+ 			rq_job = rq.job.Job.fetch(self.id, connection=current_app.redis)
+ 		except (redis.exceptions.RedisError, rq.exceptions.NoSuchJobError):
+ 			return None
+ 		return rq_job
+	def get_progress(self):
+		job = self.get_rq_job()
+		return job.meta.get('progress', 0) if job is not None else 100
 
 # class Bill(db.Model):
 # 	billId = db.Column(db.Integer, primary_key=True)
@@ -61,3 +73,17 @@ def __repr__(self):
 @login.user_loader
 def load_user(email):
 	return User.query.get(email)
+
+
+class Payment(db.Model):
+	id = db.Column(db.String(10), primary_key=True)
+	company = db.Column(db.String(40))
+	amount = db.Column(db.Integer)
+	payment_detail = db.relationship('PaymentDetail', backref='payment', lazy='dynamic')
+
+class PaymentDetail(db.Model):
+	id = db.Column(db.Integer, primary_key=True)
+	paidDate = db.Column(db.String(15))
+	company = db.Column(db.String(40))
+	amount = db.Column(db.Integer)
+	payment_id = db.Column(db.String(10), db.ForeignKey('payment.id'))

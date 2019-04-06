@@ -1,0 +1,68 @@
+{% extends 'layout.html'%}
+{% block content %}
+<script type="text/javascript">
+window.onload = function () {
+
+var linechart = new CanvasJS.Chart("linechartContainer", {
+	animationEnabled: true,
+	theme: "light2",
+	title:{
+		text: "Recent Payments"
+	},
+	axisY:{
+		includeZero: false
+	},
+	data: [{        
+		type: "line",       
+		dataPoints: dataPoints,
+	}]
+});
+$.getJSON("/getdashboard", function(data) {  
+	$.each(data, function(key, value){
+		dataPoints.push({ y: parseInt(value[0])});
+	});	
+	linechart.render();
+});
+
+// linechart.render();
+
+var piechart = new CanvasJS.Chart("piechartContainer", {
+	animationEnabled: true,
+	title: {
+		text: "Mostly Used Cards"
+	},
+	data: [{
+		type: "pie",
+		startAngle: 240,
+		yValueFormatString: "##0.00\"%\"",
+		indexLabel: "{label} {y}",
+		dataPoints: [
+			{y: 79.45, label: "Google"},
+			{y: 7.31, label: "Bing"},
+			{y: 7.06, label: "Baidu"},
+			{y: 4.91, label: "Yahoo"},
+			{y: 1.26, label: "Others"}
+		]
+	}]
+});
+piechart.render();
+
+}
+
+</script>
+<br>
+<div class="row">
+ <div class="col-sm-6">
+<div id="linechartContainer" style="height: 300px; width: 100%;"></div>
+<br>
+<div id="piechartContainer" style="height: 300px; width: 100%;"></div>
+</div>
+<div class="col-sm-6">
+<div class="jumbotron">
+ <h1>Hello, world!</h1>
+  <p>...</p>
+  <p><a class="btn btn-primary btn-lg" href="#" role="button">Learn more</a></p>
+</div>
+</div>
+</div>	
+{% endblock %}

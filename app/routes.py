@@ -1,8 +1,13 @@
-from flask import render_template, flash, redirect, url_for, request 
+from flask import render_template, flash, redirect, url_for, request, jsonify 
 from app.forms import RegistrationForm, LoginForm, AddCustomerForm, AddCardForm, PayBillForm 
 from app import app, db
 from flask_login import current_user, login_user, login_required, logout_user
-from app.models import User, Card
+from app.models import User, Card, UtilityBill
+from tasks import getUtilityBill
+from redis import Redis
+import rq
+from rq import get_current_job, Queue
+from rq.job import Job
 import simplify
 import json
 import requests
@@ -10,6 +15,11 @@ import time
 
 simplify.public_key = "sbpb_Njc3ZDkyMmYtYTE0OS00MTRjLWE5YmUtZjQ3MTI5ZWUzNmE3"
 simplify.private_key = "3KzZq8dCCUhQMh1dTCU6jPrwdG0O4wwwizAP82LcfpN5YFFQL0ODSXAOkNtXTToq"
+job_id = ''
+queue = rq.Queue(connection=Redis.from_url('redis://'))
+queue.delete(delete_jobs=True)
+queue = rq.Queue('tasks', connection=Redis.from_url('redis://'))
+
 
 @app.route('/')
 @app.route('/index')
@@ -71,73 +81,100 @@ def selectBill():
 def selectUtility():
 	return render_template('selectUtility.html', title='Select Utility')
 
+@app.route('/dashboard', methods=['GET','POST'])
+def dashboard():
+	# mylist = []
+	# payments = simplify.Payment.list({"max": 30})
+	# paymentlist = payments.list
+	# for payment in paymentlist:
+	# 	mylist.append[{"y": payment[0]}]
+	return render_template('dashboard.html', title='Dashboard')
+
+@app.route('/getdashboard', methods=['GET','POST'])
+def getdashboard():
+	mylist = []
+	payments = simplify.Payment.list({"max": 50})
+	paymentlist = payments.list
+	for payment in paymentlist:
+		newlist = []
+		bill = payment["amount"]
+		newlist.append(bill)
+		mylist.append(newlist)
+	jsonify(mylist)
+	print(mylist)
+	return jsonify(mylist)
+
+
 @app.route('/viewRecentBills', methods=['GET','POST'])
 def viewRecentBills():
-	bills = ""
-	t_end = time.time() + 25
-	while time.time() < t_end:
-		return render_template('spinner.html')
-		headers = {"Authorization": "Bearer 82aa45097ea54fbc89237acbd43f4979"}
+	global queue
+	global job_id
+	job = queue.enqueue('app.tasks.getUtilityBill')
+	job.refresh()
+	job_id = str(job.get_id())
+	loading = """
+	<div class="d-flex justify-content-center">
+  		<div class="spinner-border" role="status">
+    	<span class="sr-only">Loading...</span>
+  		</div>
+		</div>
+	"""
+	return render_template('viewRecentBills.html', title='Due Bill', loading=loading)	
 
-		uid_response = requests.post("https://utilityapi.com/api/v2/forms" ,headers=headers)
-		time.sleep(5)
-		uid_json_data_response = json.loads(uid_response.text)
-		uid = uid_json_data_response["uid"]
-
-		referral_url = "https://utilityapi.com/api/v2/forms/"+uid+"/test-submit"
-		referral_code_response = requests.post(referral_url, headers=headers, data='{"utility": "DEMO", "scenario": "residential"}')
-		time.sleep(5)
-		referral_code_json_data_response = json.loads(referral_code_response.text)
-		referral_code = referral_code_json_data_response["referral"]
-
-		meter_uid_url = "https://utilityapi.com/api/v2/authorizations?referrals="+referral_code+"&include=meters"
-		meter_uid_response = requests.get(meter_uid_url, headers=headers)
-		time.sleep(10)
-		meter_uid_json_data_response = json.loads(meter_uid_response.text)
-		meter_uid = meter_uid_json_data_response["authorizations"][0]["meters"]["meters"][0]["uid"]
-		meter_uid = str(meter_uid)
-
-		# # print(uid)
-		# # print(referral_code)
-		# print(meter_uid_json_data_response)
-		# print(meter_uid)
-		historical_data_url = "https://utilityapi.com/api/v2/meters/historical-collection"
-		# uid = [meter_uid]
-		data = {"meters": [meter_uid]}
-		json_data = json.dumps(data)
-		time.sleep(10)
-		historical_data_response = requests.post(historical_data_url, headers = headers,  data = json_data)
-		historical_data_json_response = json.loads(historical_data_response.text)
-		# print(historical_data_json_response)
-
-		success = historical_data_json_response["success"]
-		if success is True:
-			polling_url = "https://utilityapi.com/api/v2/meters/"+meter_uid
-			time.sleep(5)
-			polling_data_response = requests.get(polling_url, headers = headers)
-			polling_data_json_response = json.loads(polling_data_response.text)
-			# status = polling_data_json_response["status"]
-			# bill_count = polling_data_json_response["bill_count"]
-			# # count = 0
-			# while status != "updated" and bill_count>0:
-			# 	count = count + 1
-			# 	print(count)
-			# 	polling_data_response = requests.get(polling_url, headers = headers)
-			#  	polling_data_json_response = json.loads(polling_data_response.text)
-			# print(polling_data_json_response)
-			bills_url = "https://utilityapi.com/api/v2/bills?meters="+meter_uid
-			time.sleep(5)
-			bills_response = requests.get(bills_url, headers=headers)
-			bills_json_data_response = json.loads(bills_response.text)
-			bills = bills_json_data_response["bills"][-1]["base"]
-
-			# bill = [{"billing_account": bills["billing_account"]},
-			# {"billing_contact": bills["billing_contact"]},
-			# {"billing_address": bills["billing_address"]},
-			# {"bill_total_kwh": bills["bill_total_kwh"]},
-			# {"bill_total_cost": bills["bill_total_cost"]}]
-			bill = bills["bill_total_cost"]
-		return render_template('viewRecentBills.html', title='Due Bill', bill=bill)
+@app.route('/notifications')
+def notifications():
+	global queue
+	global job_id
+	result = ''	
+	# myjobs = queue.jobs
+	# mylength = len(myjobs)
+	myJobId = job_id
+	job = queue.fetch_job(myJobId)
+	#job = Job.fetch("b3893fc8-a6ea-4637-abb9-2e01e19f8f97", connection=Redis.from_url('redis://'))
+	job.refresh()
+	if job.is_finished:
+		# meta = job.meta
+		# progress = meta["progress"]
+		utilityBills = UtilityBill.query.all()
+		latestBill = utilityBills[-1]
+		billId = latestBill.billId
+		result= """
+		<div class="list-group">
+  		<a href="#" class="list-group-item list-group-item-action active">
+    	<div class="d-flex w-100 justify-content-between">
+      	<h4 class="mb-1">Due Bill</h4>
+    	</div>
+		<a href="#" class="list-group-item list-group-item-action">
+    	<div class="d-flex w-100 justify-content-between">
+      	<h5 class="mb-1">ConEd</h5>
+      	<small class="text-muted">"""+latestBill.usage+""" kwh</small>
+    	</div>
+    	<p class="mb-1">$"""+latestBill.duePayment+"""</p>
+    	<small class="text-muted">Account: """+latestBill.accountNumber+"""
+    	Contact: """+latestBill.accountHolder+"""</small>
+    	<small class="text-muted">"""+latestBill.billingAddress+"""</small>
+  		</a>
+  		<a href="/payBillForm" class="btn btn-primary">Pay Now</a>
+		"""
+		# result = "Completed"
+		bill = UtilityBill.query.filter_by(billId=billId).first()
+		bill.complete = True
+		db.session.commit()
+		queue.delete(delete_jobs=True)
+	else:
+		# meta = job.meta
+		# progress = meta["progress"]
+		result = """
+		<div align="center">
+		<div class="spinner-grow text-primary" role="status">
+  		<span class="sr-only">Loading...</span>
+		</div>
+		<br>
+		<br>
+		<span>Downloading...</span>
+		</div>
+		</div>"""
+	return result
 
 @app.route('/viewCards',methods=['GET','POST'])
 def viewCards():
@@ -177,7 +214,7 @@ def payBillForm():
 		payment = simplify.Payment.create(payment)
 		# card = Card(addressState=form.addressState.data,expMonth=form.expMonth.data, expYear=form.expYear.data,
 		# 	addressCity=form.addressCity.data,addressZip=form.addressZip.data,cvv=form.cvv.data, number=form.number.data)
-		flash ('Card was added succesfully!')
+		flash ('Payment was succesfully!')
 		return redirect(url_for('index'))
 	return render_template('payBillForm.html',title='Pay Bill', form=form,cards=cards)
 
@@ -203,3 +240,16 @@ def getValue():
         "currency" : currency
 	})
 	return redirect(url_for('index'))
+# <<<<<<<<<<<<This is IMAYA's CODE BEGIN>>>>>>>>>>>>>>>>>>>>>
+
+@app.route('/recentpayments', methods=["GET"])
+def recentpayments():
+	payments = simplify.Payment.list({"max": 30})
+	paymentlist = payments.list
+	return render_template('recentpayments.html',title='Recent Payments', paymentlist = paymentlist) 
+
+@app.route('/payments', methods=["GET"])
+def paymentdetail():
+	payment_detail = simplify.Payment.find(request.args.get(id))
+	return render_template('paymentdetail.html', payment_detail = payment_detail)
+# <<<<<<<<<<<<This is IMAYA's CODE END>>>>>>>>>>>>>>>>>>>>> 
